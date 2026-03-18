@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>body{margin:0;background:#faf8f4;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;color:#7a7268;}</style>
+</head>
+<body>
+<div>Memuat...</div>
+<script>
+const sb = supabase.createClient(
+  'https://wwbioclxuxcnzqndbrnc.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3YmlvY2x4dXhjbnpxbmRicm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NzcyNDcsImV4cCI6MjA4OTE1MzI0N30.1IOG6sR5wM195mfXsH8nHu2JdGjIzUsu4GEI2-rL5BI'
+);
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) { window.location.href = 'login.html'; return; }
+  const { data: profile } = await sb.from('profiles').select('completed').eq('user_id', data.session.user.id).single();
+  if (profile && profile.completed) {
+    window.location.href = 'discovery.html';
+  } else {
+    window.location.href = 'onboarding.html';
+  }
+})();
+</script>
+</body>
+</html>
