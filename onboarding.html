@@ -1539,7 +1539,7 @@ a.nav-item:hover { color:var(--gold); background:rgba(201,168,76,0.15); }
         </div>
 
         <div class="chat-messages" id="onboardingMessages">
-          <div class="msg ai">
+          <div class="msg ai" id="initialAiMsg">
             <div class="msg-avatar">✨</div>
             <div>
               <div class="msg-bubble">
@@ -1812,7 +1812,7 @@ function handleChatKey(e, type) {
   }
 }
 
-function sendOnboardingMsg() {
+async function sendOnboardingMsg() {
   const input = document.getElementById('onboardingInput');
   const val = input.value.trim();
   if (!val) return;
@@ -1820,42 +1820,16 @@ function sendOnboardingMsg() {
   addMsg('onboardingMessages', val, 'user');
   input.value = '';
 
-  const step = state.onboardingStep;
-  const flow = onboardingFlow;
-
-  setTimeout(() => {
-    showTyping('onboardingMessages');
-    setTimeout(() => {
-      removeTyping('onboardingMessages');
-
-      if (step < flow.length) {
-        const current = flow[step];
-        const extracted = current.extract(val);
-        updatePreviewField(current.field, extracted, val);
-
-        state.onboardingStep++;
-
-        // Check for correction keywords
-        const correctionWords = ['bukan', 'koreksi', 'maksudnya', 'eh', 'salah'];
-        const isCorrection = correctionWords.some(w => val.toLowerCase().includes(w));
-
-        if (isCorrection && step > 0) {
-          addMsg('onboardingMessages', `Baik! Saya catat koreksinya 📝 Data <strong>${current.field}</strong> sudah saya perbaiki menjadi "<strong>${extracted}</strong>". Ada lagi yang perlu dikoreksi?`, 'ai');
-        } else if (state.onboardingStep < flow.length) {
-          addMsg('onboardingMessages', flow[state.onboardingStep].question, 'ai');
-        } else {
-          // Last field - also extract target from same answer
-          if (val.toLowerCase().includes('bulan') || val.toLowerCase().includes('tahun')) {
-            const targetMatch = val.match(/\d+\s*(bulan|tahun)/i);
-            if (targetMatch) updatePreviewField('target', targetMatch[0], val);
-          }
-          setTimeout(() => {
-            completeOnboarding();
-          }, 600);
-        }
-      }
-    }, 1200);
-  }, 300);
+  showTyping('onboardingMessages');
+  try {
+    const aiReply = await fetchWithRetry(val);
+    removeTyping('onboardingMessages');
+    addMsg('onboardingMessages', aiReply, 'ai');
+  } catch (err) {
+    removeTyping('onboardingMessages');
+    addMsg('onboardingMessages', '⚠️ Gagal menghubungi AI. Pastikan webhook n8n aktif dan coba lagi.', 'ai');
+    console.error('N8N Error:', err);
+  }
 }
 
 function updatePreviewField(field, value, rawAnswer) {
@@ -2556,7 +2530,9 @@ function startLivePreviewPolling() {
   setInterval(async () => {
     if (!currentUser) return;
     const { data } = await sb.from('profiles').select('*').eq('user_id', currentUser.id).single();
-    if (data) renderProfilePreview(data);
+    if (!data) return;
+    renderProfilePreview(data);
+    if (data.completed) showCompletionAndRedirect();
   }, 4000);
 }
 
@@ -2630,11 +2606,7 @@ function updateTypingText(text) {
   }
 }
 
-const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-let currentUser = null;
-let profileData = {};
+// Supabase client sudah dideklarasikan di atas
 
 // ========================
 // AUTH GUARD
@@ -2847,8 +2819,32 @@ function startLivePreviewPolling() {
   setInterval(async () => {
     if (!currentUser) return;
     const { data } = await sb.from('profiles').select('*').eq('user_id', currentUser.id).single();
-    if (data) renderProfilePreview(data);
+    if (!data) return;
+    renderProfilePreview(data);
+    if (data.completed) showCompletionAndRedirect();
   }, 4000);
+}
+
+let _redirecting = false;
+function showCompletionAndRedirect() {
+  if (_redirecting) return;
+  _redirecting = true;
+  // Tampilkan tombol
+  const btn = document.getElementById('saveContinueBtn');
+  if (btn) btn.classList.add('show');
+  // Tampilkan pesan countdown di chat
+  const msg = document.createElement('div');
+  msg.style.cssText = 'background:rgba(122,158,135,0.12);border:1px solid rgba(122,158,135,0.4);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--sage-dark);text-align:center;margin-top:8px;';
+  msg.innerHTML = '🎉 <strong>Profil lengkap!</strong> Mengalihkan ke Discovery dalam <span id="cdCount">3</span> detik...';
+  const container = document.getElementById('onboardingMessages');
+  if (container) { container.appendChild(msg); container.scrollTop = container.scrollHeight; }
+  let cd = 3;
+  const iv = setInterval(() => {
+    cd--;
+    const el = document.getElementById('cdCount');
+    if (el) el.textContent = cd;
+    if (cd <= 0) { clearInterval(iv); window.location.href = 'discovery.html'; }
+  }, 1000);
 }
 
 async function saveProfileToSupabase(fields) {
@@ -2868,6 +2864,82 @@ async function goToDiscovery() {
   setTimeout(() => { window.location.href = 'discovery.html'; }, 1000);
 }
 
+// ========================
+// PROFILE CONTEXT INJECTION
+// Kirim data Supabase ke n8n di awal sesi agar agent tidak tanya ulang
+// ========================
+function buildProfileContext(data) {
+  const fieldMap = [
+    ['fullname','Nama Lengkap'],['nickname','Nama Panggilan'],
+    ['gender','Jenis Kelamin'],['date_of_birth','Tanggal Lahir'],
+    ['domicile','Domisili'],['ethnicity','Suku/Etnis'],
+    ['marital_status','Status Nikah'],['sibling_order','Urutan Keluarga'],
+    ['whatsapp_number','WhatsApp'],['email','Email'],
+    ['social_media_profile','Media Sosial'],
+    ['weight_kg','Berat Badan (kg)'],['height_cm','Tinggi Badan (cm)'],
+    ['illness','Riwayat Penyakit'],['sport_physical_activities','Olahraga'],
+    ['hobby_interest','Hobi & Minat'],['character_liked','Karakter Disukai'],
+    ['character_disliked','Karakter Tidak Disukai'],
+    ['education_status','Pendidikan'],['education_major','Jurusan'],
+    ['certification','Sertifikasi'],['occupation','Pekerjaan'],
+    ['occupation_history','Riwayat Kerja'],['salary_range','Rentang Gaji'],
+    ['parent_marital_status','Status Ortu'],['parent_ethnicity','Suku Ortu'],
+    ['mother_education_status','Pendidikan Ibu'],['father_education_status','Pendidikan Ayah'],
+    ['mother_occupation','Pekerjaan Ibu'],['father_occupation','Pekerjaan Ayah'],
+    ['family_social_status','Status Sosial Keluarga'],
+    ['pray_wajib_description','Shalat Wajib'],['sunnah_routine','Ibadah Sunnah'],
+    ['favorite_preacher','Ustadz Favorit'],['islamic_manhaj','Manhaj'],
+    ['marriage_goal','Tujuan Nikah'],['marriage_essential_aspect','Aspek Terpenting Nikah'],
+    ['marriage_destructive_aspect','Hal Perusak Nikah'],['strategy_for_sakinah','Strategi Sakinah'],
+    ['wealth_management_habit','Kelola Harta'],['monthly_spending_avg','Pengeluaran/bln'],
+    ['monthly_liabilities','Cicilan/bln'],['plan_after_marriage','Rencana Setelah Nikah'],
+    ['childcare_preference','Pengasuhan Anak'],
+  ];
+  const filled = fieldMap.filter(([key]) => data[key] !== null && data[key] !== undefined && data[key] !== '');
+  if (filled.length === 0) return null;
+  const lines = filled.map(([key, label]) => `- ${label}: ${data[key]}`);
+  return `[KONTEKS_PROFIL_EXISTING] Data user ini sudah tersimpan di database. JANGAN tanya ulang info yang sudah ada. Lanjutkan hanya untuk field yang masih kosong.\n\n${lines.join('\n')}\n\n[/KONTEKS_PROFIL_EXISTING]`;
+}
+
+async function initChatWithProfile() {
+  if (!profileData || typeof profileData !== 'object') return;
+  const context = buildProfileContext(profileData);
+  if (!context) return; // user baru, tidak ada data
+
+  // Ganti greeting awal dengan yang lebih relevan
+  const initialMsg = document.getElementById('initialAiMsg');
+  if (initialMsg) initialMsg.remove();
+
+  addMsg('onboardingMessages', '👋 Selamat datang kembali! Sedang memuat data profilmu dari database...', 'ai');
+
+  showTyping('onboardingMessages');
+  try {
+    const res = await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatInput: context,
+        sessionId: currentUser.id,
+        isProfileContext: true
+      })
+    });
+    removeTyping('onboardingMessages');
+    if (res.ok) {
+      const resData = await res.json();
+      const aiReply = resData.output || resData.text || resData.message || resData.response
+        || (Array.isArray(resData) && resData[0]?.output)
+        || 'Baik! Data kamu sudah saya muat. Mari lanjutkan dari yang belum terisi ya. 😊';
+      addMsg('onboardingMessages', aiReply, 'ai');
+    } else {
+      addMsg('onboardingMessages', 'Data kamu berhasil dimuat! Mari lanjutkan pengisian ya. 😊', 'ai');
+    }
+  } catch(err) {
+    removeTyping('onboardingMessages');
+    console.warn('Profile context init failed:', err);
+    addMsg('onboardingMessages', 'Halo lagi! Yuk kita lanjutkan pengisian data profilmu. 😊', 'ai');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   showAuthLoading(true);
   const { data } = await sb.auth.getSession();
@@ -2881,6 +2953,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   startLivePreviewPolling();
   showAuthLoading(false);
+  await initChatWithProfile(); // inject existing profile ke n8n
 });
 </script>
 </body>

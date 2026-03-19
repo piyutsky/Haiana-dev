@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAIANA — Profil Saya</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --sage: #7a9e87; --sage-light: #a8c4b0; --sage-dark: #4a6b55;
+  --cream: #f5f0e8; --cream-dark: #e8e0ce; --gold: #c9a84c;
+  --gold-light: #e8d5a3; --charcoal: #2c2c2c; --warm-white: #faf8f4;
+  --text-main: #3a3530; --text-muted: #7a7268;
+  --shadow-soft: 0 4px 24px rgba(44,44,44,0.08);
+  --shadow-card: 0 2px 16px rgba(44,44,44,0.10);
+  --radius: 16px; --radius-sm: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; background: var(--warm-white); color: var(--text-main); min-height: 100vh; overflow-x: hidden; }
+
+/* ===== APP SHELL ===== */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ===== SIDEBAR ===== */
+.sidebar { width: 72px; background: var(--charcoal); display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 8px; z-index: 100; flex-shrink: 0; }
+.sidebar-logo { font-family: 'Amiri', serif; color: var(--gold); font-size: 22px; margin-bottom: 16px; letter-spacing: 1px; }
+.nav-item { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; color: var(--text-muted); position: relative; font-size: 18px; text-decoration: none; }
+.nav-item:hover, .nav-item.active { background: rgba(201,168,76,0.15); color: var(--gold); }
+.nav-tooltip { position: absolute; left: 60px; background: var(--charcoal); color: var(--cream); padding: 6px 12px; border-radius: 8px; font-size: 12px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s; border: 1px solid rgba(201,168,76,0.3); z-index: 200; }
+.nav-item:hover .nav-tooltip { opacity: 1; }
+a.nav-item { text-decoration: none; color: var(--text-muted); }
+a.nav-item.active { color: var(--gold); background: rgba(201,168,76,0.15); }
+a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
+
+/* ===== MAIN ===== */
+.main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.topbar { height: 60px; background: var(--warm-white); border-bottom: 1px solid var(--cream-dark); display: flex; align-items: center; padding: 0 28px; gap: 16px; flex-shrink: 0; }
+.topbar-title { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--text-main); flex: 1; }
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+.profile-scroll { flex: 1; overflow-y: auto; padding: 28px; display: flex; gap: 24px; align-items: flex-start; }
+.profile-scroll::-webkit-scrollbar { width: 4px; }
+.profile-scroll::-webkit-scrollbar-thumb { background: var(--cream-dark); border-radius: 2px; }
+
+/* ===== LEFT COLUMN: Hero card ===== */
+.profile-hero { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+
+/* Photo card — full-width square photo placeholder */
+.hero-card {
+  background: linear-gradient(145deg, var(--sage-dark), var(--sage));
+  border-radius: 20px;
+  padding: 0;
+  text-align: center;
+  color: white;
+  box-shadow: 0 8px 32px rgba(74,107,85,0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-avatar {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 72px;
+  position: relative;
+  cursor: pointer; overflow: hidden;
+  transition: filter 0.2s;
+}
+.hero-avatar:hover { filter: brightness(0.92); }
+.avatar-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.38);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; border-radius: 20px; opacity: 0; transition: opacity 0.2s;
+  font-size: 28px; color: white;
+}
+.avatar-overlay span { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.hero-avatar:hover .avatar-overlay { opacity: 1; }
+.hero-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 20px; }
+.upload-spinner { position: absolute; inset: 0; background: rgba(0,0,0,0.5); border-radius: 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; }
+
+/* Info card — name, nickname, badges */
+.hero-info-card {
+  background: linear-gradient(145deg, var(--sage-dark), var(--sage));
+  border-radius: 20px;
+  padding: 20px 20px 18px;
+  text-align: center;
+  color: white;
+  box-shadow: 0 8px 32px rgba(74,107,85,0.25);
+  position: relative;
+  overflow: hidden;
+}
+.hero-info-card::before { content: ''; position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; background: rgba(255,255,255,0.07); border-radius: 50%; }
+.hero-info-card::after { content: ''; position: absolute; bottom: -20px; left: -20px; width: 80px; height: 80px; background: rgba(255,255,255,0.05); border-radius: 50%; }
+.hero-name { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; margin-bottom: 4px; position: relative; z-index: 1; }
+.hero-nickname { font-size: 13px; opacity: 0.8; margin-bottom: 12px; position: relative; z-index: 1; }
+.hero-badges { display: flex; flex-direction: column; gap: 6px; align-items: center; position: relative; z-index: 1; }
+.hero-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 20px; font-size: 12px; backdrop-filter: blur(4px); }
+
+.completion-card { background: white; border-radius: var(--radius); padding: 16px; border: 1px solid var(--cream-dark); box-shadow: var(--shadow-soft); }
+.completion-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.completion-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+.completion-pct { font-size: 18px; font-weight: 700; color: var(--sage-dark); }
+.completion-bar-bg { background: var(--cream-dark); border-radius: 10px; height: 8px; overflow: hidden; }
+.completion-bar-fill { height: 100%; background: linear-gradient(to right, var(--sage), var(--sage-dark)); border-radius: 10px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+.completion-sub { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
+.edit-btn { width: 100%; padding: 12px; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--gold), #b8943d); color: white; border: none; cursor: pointer; font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.edit-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(201,168,76,0.4); }
+
+/* ===== RIGHT COLUMN: Sections ===== */
+.profile-sections { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+
+.section-card { background: white; border-radius: var(--radius); border: 1px solid var(--cream-dark); overflow: hidden; box-shadow: var(--shadow-soft); }
+.section-header { padding: 16px 20px; display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; transition: background 0.2s; }
+.section-header:hover { background: var(--warm-white); }
+.section-icon { font-size: 20px; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--cream); flex-shrink: 0; }
+.section-title { flex: 1; }
+.section-title h3 { font-size: 15px; font-weight: 600; color: var(--text-main); }
+.section-title p { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.section-count { font-size: 11px; color: var(--sage-dark); font-weight: 600; background: rgba(122,158,135,0.12); padding: 3px 8px; border-radius: 20px; }
+.section-chevron { font-size: 12px; color: var(--text-muted); transition: transform 0.2s; }
+.section-card.open .section-chevron { transform: rotate(180deg); }
+
+.section-body { display: none; padding: 0 20px 16px; animation: sectionOpen 0.2s ease; }
+.section-card.open .section-body { display: block; }
+@keyframes sectionOpen { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+.fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fields-grid.single { grid-template-columns: 1fr; }
+
+.field-item { background: var(--warm-white); border-radius: var(--radius-sm); padding: 10px 14px; }
+.field-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+.field-val { font-size: 13px; color: var(--text-main); font-weight: 500; line-height: 1.4; }
+.field-val.empty { color: var(--cream-dark); font-style: italic; font-weight: 400; }
+.field-val.boolean-true { color: var(--sage-dark); }
+.field-val.boolean-false { color: #b87070; }
+
+/* n8n indicator */
+.n8n-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); padding: 5px 10px; border-radius: 20px; background: var(--cream); }
+.n8n-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+/* toast */
+.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast { background: var(--charcoal); color: white; padding: 12px 18px; border-radius: 12px; font-size: 13px; animation: toastIn 0.3s ease; max-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+@keyframes toastIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(10px)} }
+
+/* ===== EDIT MODE ===== */
+.edit-input {
+  width: 100%; border: 1.5px solid var(--sage-light); border-radius: 8px;
+  padding: 7px 10px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+  background: white; color: var(--text-main); outline: none; resize: vertical;
+  transition: border-color 0.2s; min-height: 34px;
+}
+.edit-input:focus { border-color: var(--sage); box-shadow: 0 0 0 3px rgba(122,158,135,0.15); }
+.edit-input[disabled] { background: var(--cream); color: var(--text-muted); cursor: not-allowed; border-color: var(--cream-dark); }
+.field-item.locked { opacity: 0.65; }
+.save-bar { display: flex; gap: 10px; margin-top: 4px; }
+.btn-save { flex: 1; padding: 12px; border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--sage), var(--sage-dark)); color: white; border: none; cursor: pointer; font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
+.btn-save:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(74,107,85,0.35); }
+.btn-save:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
+.btn-cancel { padding: 12px 16px; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); border: 1.5px solid var(--cream-dark); cursor: pointer; font-size: 14px; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
+.btn-cancel:hover { border-color: #e87070; color: #e87070; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="sidebar-logo">ح</div>
+
+    <a href="discovery.html" class="nav-item" style="text-decoration:none;">
+      🔍<div class="nav-tooltip">Discovery</div>
+    </a>
+    <a href="inbox.html" class="nav-item" style="text-decoration:none;">
+      📬<div class="nav-tooltip">Inbox & Interest</div>
+    </a>
+    <a href="chat.html" class="nav-item" style="text-decoration:none;">
+      💬<div class="nav-tooltip">Chat Mediator</div>
+    </a>
+    <a href="profile.html" class="nav-item active" style="text-decoration:none;">
+      👤<div class="nav-tooltip">Profil Saya</div>
+    </a>
+    <div style="margin-top:auto;" class="nav-item" onclick="toggleSettings()">
+      ⚙️<div class="nav-tooltip">Pengaturan</div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Profil Saya</div>
+      <div class="topbar-actions" id="topbarActions">
+        <div class="n8n-indicator"><div class="n8n-dot"></div> Supabase</div>
+      </div>
+    </div>
+
+    <div class="profile-scroll" id="profileContent">
+      <!-- Diisi via JS -->
+    </div>
+  </div>
+</div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const SUPABASE_URL = 'https://wwbioclxuxcnzqndbrnc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3YmlvY2x4dXhjbnpxbmRicm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NzcyNDcsImV4cCI6MjA4OTE1MzI0N30.1IOG6sR5wM195mfXsH8nHu2JdGjIzUsu4GEI2-rL5BI';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;
+let profileData = {};
+let isEditMode = false;
+
+// ========================
+// AUTH
+// ========================
+async function initAuth() {
+  showAuthLoading(true);
+  const { data } = await sb.auth.getSession();
+  if (!data.session) { window.location.href = 'login.html'; return; }
+  currentUser = data.session.user;
+  updateTopbarUser(currentUser.email);
+  const { data: profile } = await sb.from('profiles').select('*').eq('user_id', currentUser.id).single();
+  if (!profile || !profile.completed) { window.location.href = 'onboarding.html'; return; }
+  profileData = profile;
+  renderProfile(profile);
+  showAuthLoading(false);
+}
+
+function showAuthLoading(show) {
+  let overlay = document.getElementById('authLoadingOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'authLoadingOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:var(--warm-white);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px;';
+    overlay.innerHTML = '<div style="font-family:Amiri,serif;font-size:48px;color:var(--sage-dark);">حيانا</div><div style="width:32px;height:32px;border:3px solid var(--cream-dark);border-top-color:var(--sage);border-radius:50%;animation:spin 0.8s linear infinite;"></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+    document.body.appendChild(overlay);
+  }
+  if (!show) { overlay.style.opacity='0'; setTimeout(()=>overlay.remove(),300); }
+}
+
+function updateTopbarUser(email) {
+  const actions = document.getElementById('topbarActions');
+  const chip = document.createElement('div');
+  chip.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:var(--cream);font-size:12px;color:var(--text-muted);';
+  chip.innerHTML = '<span style="width:24px;height:24px;border-radius:50%;background:var(--sage);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">' + email[0].toUpperCase() + '</span><span>' + email + '</span><button onclick="signOut()" style="background:transparent;border:none;cursor:pointer;color:var(--text-muted);font-size:11px;padding:0;margin-left:4px;">✕</button>';
+  actions.prepend(chip);
+}
+async function signOut() { await sb.auth.signOut(); window.location.href = 'login.html'; }
+
+// ========================
+// RENDER HELPERS
+// ========================
+function calcAge(dateStr) {
+  if (!dateStr) return null;
+  const dob = new Date(dateStr);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
+function esc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function fval(v, suffix = '') {
+  if (v === null || v === undefined || v === '') return '<span class="field-val empty">Belum diisi</span>';
+  if (typeof v === 'boolean') return `<span class="field-val ${v ? 'boolean-true' : 'boolean-false'}">${v ? '✓ Ya' : '✗ Tidak'}</span>`;
+  if (Array.isArray(v)) return `<span class="field-val">${v.join(', ')}</span>`;
+  return `<span class="field-val">${v}${suffix}</span>`;
+}
+
+function field(key, label, value, suffix = '', type = 'text') {
+  // Email is always read-only
+  const locked = key === 'email';
+
+  if (isEditMode) {
+    const safeVal = esc(Array.isArray(value) ? value.join(', ') : (value ?? ''));
+    const boolVal = value === true ? 'true' : value === false ? 'false' : '';
+
+    let input;
+    if (locked) {
+      input = `<input class="edit-input" disabled value="${safeVal}" title="Email tidak bisa diubah">`;
+    } else if (type === 'gender') {
+      input = `<select class="edit-input" data-field="${key}" data-type="text">
+        <option value="">(pilih)</option>
+        <option value="laki-laki" ${value === 'laki-laki' ? 'selected' : ''}>Laki-laki</option>
+        <option value="perempuan" ${value === 'perempuan' ? 'selected' : ''}>Perempuan</option>
+      </select>`;
+    } else if (type === 'boolean') {
+      input = `<select class="edit-input" data-field="${key}" data-type="boolean">
+        <option value="">(pilih)</option>
+        <option value="true" ${boolVal === 'true' ? 'selected' : ''}>Ya</option>
+        <option value="false" ${boolVal === 'false' ? 'selected' : ''}>Tidak</option>
+      </select>`;
+    } else if (type === 'textarea') {
+      input = `<textarea class="edit-input" data-field="${key}" data-type="textarea" rows="3">${esc(value ?? '')}</textarea>`;
+    } else if (type === 'date') {
+      input = `<input class="edit-input" data-field="${key}" data-type="date" type="date" value="${safeVal}">`;
+    } else if (type === 'number') {
+      input = `<input class="edit-input" data-field="${key}" data-type="number" type="number" value="${safeVal}">`;
+    } else if (type === 'array') {
+      input = `<input class="edit-input" data-field="${key}" data-type="array" value="${safeVal}" placeholder="Pisahkan dengan koma">`;
+    } else {
+      input = `<input class="edit-input" data-field="${key}" data-type="text" type="text" value="${safeVal}">`;
+    }
+    return `<div class="field-item${locked ? ' locked' : ''}"><div class="field-label">${label}${locked ? ' 🔒' : ''}</div>${input}</div>`;
+  }
+
+  // Read-only view
+  return `<div class="field-item"><div class="field-label">${label}</div>${fval(value, suffix)}</div>`;
+}
+
+// ========================
+// SECTIONS
+// ========================
+const SECTIONS = [
+  {
+    id: 'dasar', icon: '🪪', title: 'Data Dasar', sub: 'Identitas & kontak',
+    render: (p) => `
+      <div class="fields-grid">
+        ${field('fullname','Nama Lengkap', p.fullname)}
+        ${field('nickname','Nama Panggilan', p.nickname)}
+        ${field('gender','Jenis Kelamin', p.gender, '', 'gender')}
+        ${field('date_of_birth','Tanggal Lahir', p.date_of_birth, '', 'date')}
+        ${field('domicile','Domisili', p.domicile)}
+        ${field('ethnicity','Suku/Etnis', p.ethnicity)}
+        ${field('marital_status','Status Nikah', p.marital_status)}
+        ${field('sibling_order','Urutan Saudara', p.sibling_order)}
+        ${field('whatsapp_number','WhatsApp', p.whatsapp_number)}
+        ${field('email','Email', p.email)}
+        ${field('social_media_profile','Media Sosial', p.social_media_profile)}
+      </div>`,
+    fields: ['fullname','nickname','gender','date_of_birth','domicile','ethnicity','marital_status','sibling_order','whatsapp_number','email','social_media_profile']
+  },
+  {
+    id: 'fisik', icon: '💪', title: 'Fisik & Kesehatan', sub: 'Kondisi fisik',
+    render: (p) => `
+      <div class="fields-grid">
+        ${field('weight_kg','Berat Badan', p.weight_kg, ' kg', 'number')}
+        ${field('height_cm','Tinggi Badan', p.height_cm, ' cm', 'number')}
+        ${field('illness','Riwayat Penyakit', p.illness, '', 'textarea')}
+        ${field('sport_physical_activities','Olahraga / Aktivitas Fisik', p.sport_physical_activities)}
+      </div>`,
+    fields: ['weight_kg','height_cm','illness','sport_physical_activities']
+  },
+  {
+    id: 'karakter', icon: '🎭', title: 'Karakter & Hobi', sub: 'Kepribadian',
+    render: (p) => `
+      <div class="fields-grid single">
+        ${field('hobby_interest','Hobi & Minat', p.hobby_interest, '', 'textarea')}
+        ${field('character_liked','Karakter yang Disukai', p.character_liked, '', 'textarea')}
+        ${field('character_disliked','Karakter yang Tidak Disukai', p.character_disliked, '', 'textarea')}
+      </div>`,
+    fields: ['hobby_interest','character_liked','character_disliked']
+  },
+  {
+    id: 'karir', icon: '💼', title: 'Pendidikan & Karir', sub: 'Riwayat kerja & pendidikan',
+    render: (p) => `
+      <div class="fields-grid">
+        ${field('education_status','Pendidikan Terakhir', p.education_status)}
+        ${field('education_major','Jurusan', p.education_major)}
+        ${field('certification','Sertifikasi', p.certification, '', 'textarea')}
+        ${field('occupation','Pekerjaan Sekarang', p.occupation)}
+        ${field('occupation_history','Riwayat Kerja', p.occupation_history, '', 'textarea')}
+        ${field('salary_range','Rentang Gaji', p.salary_range)}
+      </div>`,
+    fields: ['education_status','education_major','certification','occupation','occupation_history','salary_range']
+  },
+  {
+    id: 'keluarga', icon: '👨‍👩‍👧', title: 'Keluarga', sub: 'Latar belakang keluarga',
+    render: (p) => `
+      <div class="fields-grid">
+        ${field('parent_marital_status','Status Pernikahan Ortu', p.parent_marital_status)}
+        ${field('parent_ethnicity','Suku/Etnis Ortu', p.parent_ethnicity)}
+        ${field('mother_education_status','Pendidikan Ibu', p.mother_education_status)}
+        ${field('father_education_status','Pendidikan Ayah', p.father_education_status)}
+        ${field('siblings_education_status','Pendidikan Saudara', p.siblings_education_status)}
+        ${field('mother_occupation','Pekerjaan Ibu', p.mother_occupation)}
+        ${field('father_occupation','Pekerjaan Ayah', p.father_occupation)}
+        ${field('family_social_status','Status Sosial Keluarga', p.family_social_status)}
+        ${field('family_is_multireligion','Multi-agama?', p.family_is_multireligion, '', 'boolean')}
+        ${field('multireligion_description','Keterangan Multi-agama', p.multireligion_description)}
+      </div>`,
+    fields: ['parent_marital_status','parent_ethnicity','mother_education_status','father_education_status','siblings_education_status','mother_occupation','father_occupation','family_social_status','family_is_multireligion']
+  },
+  {
+    id: 'agama', icon: '☪️', title: 'Agama & Spiritualitas', sub: 'Manhaj & ibadah',
+    render: (p) => `
+      <div class="fields-grid">
+        ${field('parent_islamic_manhaj','Manhaj Ortu', p.parent_islamic_manhaj)}
+        ${field('islamic_nurture_from_parent','Didikan Islam dari Ortu', p.islamic_nurture_from_parent, '', 'textarea')}
+        ${field('parent_islamic_organization','Organisasi Islam Ortu', p.parent_islamic_organization)}
+        ${field('pray_wajib_description','Deskripsi Shalat Wajib', p.pray_wajib_description, '', 'textarea')}
+        ${field('sunnah_routine','Ibadah Sunnah', p.sunnah_routine, '', 'textarea')}
+        ${field('favorite_preacher','Ustadz Favorit', p.favorite_preacher)}
+        ${field('islamic_manhaj','Manhaj Pribadi', p.islamic_manhaj)}
+      </div>`,
+    fields: ['parent_islamic_manhaj','islamic_nurture_from_parent','parent_islamic_organization','pray_wajib_description','sunnah_routine','favorite_preacher','islamic_manhaj']
+  },
+  {
+    id: 'finansial', icon: '💰', title: 'Finansial', sub: 'Kebiasaan & rencana keuangan',
+    render: (p) => `
+      <div class="fields-grid">
+        ${field('wealth_management_habit','Kebiasaan Kelola Harta', p.wealth_management_habit, '', 'textarea')}
+        ${field('investment_instruments','Instrumen Investasi', p.investment_instruments, '', 'array')}
+        ${field('monthly_spending_avg','Rata-rata Pengeluaran/Bln', p.monthly_spending_avg)}
+        ${field('household_economy_plan','Rencana Ekonomi Rumah Tangga', p.household_economy_plan, '', 'textarea')}
+        ${field('monthly_liabilities','Cicilan / Kewajiban/Bln', p.monthly_liabilities, '', 'array')}
+        ${field('has_receivable','Ada Piutang?', p.has_receivable, '', 'boolean')}
+        ${field('receivable_amount_scale','Skala Piutang', p.receivable_amount_scale)}
+      </div>`,
+    fields: ['wealth_management_habit','investment_instruments','monthly_spending_avg','household_economy_plan','monthly_liabilities','has_receivable']
+  },
+  {
+    id: 'nikah', icon: '💍', title: 'Visi Pernikahan', sub: 'Tujuan & preferensi nikah',
+    render: (p) => `
+      <div class="fields-grid single">
+        ${field('marriage_goal','Tujuan Menikah', p.marriage_goal, '', 'textarea')}
+        ${field('marriage_goal_steps','Langkah Menuju Nikah', p.marriage_goal_steps, '', 'textarea')}
+        ${field('marriage_essential_aspect','Aspek Terpenting', p.marriage_essential_aspect, '', 'textarea')}
+        ${field('marriage_destructive_aspect','Hal Perusak Pernikahan', p.marriage_destructive_aspect, '', 'textarea')}
+        ${field('strategy_for_sakinah','Strategi Meraih Sakinah', p.strategy_for_sakinah, '', 'textarea')}
+      </div>
+      <div class="fields-grid" style="margin-top:10px;">
+        ${field('okay_with_widow','Bersedia Janda/Duda?', p.okay_with_widow, '', 'boolean')}
+        ${field('spouse_education_preference','Preferensi Pendidikan Pasangan', p.spouse_education_preference)}
+        ${field('has_guardian_permission','Izin Wali?', p.has_guardian_permission, '', 'boolean')}
+        ${field('plan_after_marriage','Rencana Setelah Menikah', p.plan_after_marriage, '', 'textarea')}
+        ${field('childcare_preference','Preferensi Pengasuhan Anak', p.childcare_preference, '', 'textarea')}
+      </div>`,
+    fields: ['marriage_goal','marriage_goal_steps','marriage_essential_aspect','marriage_destructive_aspect','strategy_for_sakinah','okay_with_widow','spouse_education_preference','has_guardian_permission','plan_after_marriage','childcare_preference']
+  },
+];
+
+function countFilled(p, fields) {
+  return fields.filter(f => p[f] !== null && p[f] !== undefined && p[f] !== '').length;
+}
+
+// ========================
+// EDIT MODE
+// ========================
+function toggleEditMode(enable) {
+  isEditMode = (enable !== undefined) ? enable : !isEditMode;
+  renderProfile(profileData);
+  if (isEditMode) {
+    // Open all sections in edit mode
+    SECTIONS.forEach(s => { const c = document.getElementById('section-' + s.id); if (c) c.classList.add('open'); });
+    document.getElementById('section-dasar').scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+async function saveProfile() {
+  const saveBtn = document.getElementById('saveProfBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Menyimpan...'; }
+
+  const updates = {};
+  document.querySelectorAll('[data-field]').forEach(input => {
+    const key = input.dataset.field;
+    const type = input.dataset.type;
+    let value = input.tagName === 'TEXTAREA' ? input.value.trim() : input.value.trim();
+
+    if (type === 'boolean') {
+      value = value === 'true' ? true : value === 'false' ? false : null;
+    } else if (type === 'number') {
+      value = value !== '' ? parseFloat(value) : null;
+    } else if (type === 'date') {
+      value = value || null;
+    } else if (type === 'array') {
+      value = value ? value.split(',').map(s => s.trim()).filter(Boolean) : null;
+    } else {
+      value = value || null;
+    }
+    updates[key] = value;
+  });
+
+  const { error } = await sb.from('profiles').update({ ...updates, updated_at: new Date().toISOString() }).eq('user_id', currentUser.id);
+  if (error) {
+    showToast('❌ Gagal menyimpan: ' + error.message);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Simpan Perubahan'; }
+    return;
+  }
+
+  profileData = { ...profileData, ...updates };
+  isEditMode = false;
+  renderProfile(profileData);
+  showToast('✅ Profil berhasil disimpan!');
+}
+
+// ========================
+// RENDER PROFILE
+// ========================
+function toggleSection(id) {
+  const card = document.getElementById('section-' + id);
+  card.classList.toggle('open');
+}
+
+function renderProfile(p) {
+  const allF = SECTIONS.flatMap(s => s.fields);
+  const filled = allF.filter(f => p[f] !== null && p[f] !== undefined && p[f] !== '').length;
+  const pct = Math.round(filled / allF.length * 100);
+  const age = calcAge(p.date_of_birth);
+  const genderEmoji = p.gender === 'perempuan' ? '👩' : p.gender === 'laki-laki' ? '👨' : '👤';
+
+  const container = document.getElementById('profileContent');
+  container.innerHTML = `
+    <!-- Left: Hero -->
+    <div class="profile-hero">
+      <!-- Photo card -->
+      <div class="hero-card">
+        <div class="hero-avatar" onclick="triggerPhotoUpload()" title="Klik untuk ganti foto">
+          ${p.photo_url
+            ? `<img src="${p.photo_url}" alt="Foto profil">`
+            : `<span>${genderEmoji}</span>`
+          }
+          <div class="avatar-overlay">📷<span>Ganti Foto</span></div>
+        </div>
+        <input type="file" id="photoFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" style="display:none" onchange="uploadPhoto(this.files[0])">
+      </div>
+
+      <!-- Info card -->
+      <div class="hero-info-card">
+        <div class="hero-name">${p.fullname || 'Nama belum diisi'}</div>
+        <div class="hero-nickname">${p.nickname ? '@' + p.nickname : ''}</div>
+        <div class="hero-badges">
+          <div class="hero-badge">${p.domicile ? '📍 ' + p.domicile.split(',')[0] : '—'}</div>
+          ${p.occupation ? `<div class="hero-badge">💼 ${p.occupation}</div>` : ''}
+          ${age ? `<div class="hero-badge">🎂 ${age} tahun</div>` : ''}
+        </div>
+      </div>
+
+      <div class="completion-card">
+        <div class="completion-header">
+          <span class="completion-title">Kelengkapan Profil</span>
+          <span class="completion-pct">${pct}%</span>
+        </div>
+        <div class="completion-bar-bg">
+          <div class="completion-bar-fill" style="width:${pct}%"></div>
+        </div>
+        <div class="completion-sub">${filled} dari ${allF.length} field terisi</div>
+      </div>
+
+      ${isEditMode ? `
+        <div class="save-bar">
+          <button class="btn-cancel" onclick="toggleEditMode(false)">✕ Batal</button>
+          <button class="btn-save" id="saveProfBtn" onclick="saveProfile()">💾 Simpan Perubahan</button>
+        </div>
+      ` : `
+        <button class="edit-btn" onclick="toggleEditMode(true)">✏️ Edit Profil</button>
+      `}
+    </div>
+
+    <!-- Right: Sections -->
+    <div class="profile-sections">
+      ${SECTIONS.map(s => {
+        const filledCount = countFilled(p, s.fields);
+        const totalCount = s.fields.length;
+        return `
+          <div class="section-card" id="section-${s.id}">
+            <div class="section-header" onclick="toggleSection('${s.id}')">
+              <div class="section-icon">${s.icon}</div>
+              <div class="section-title">
+                <h3>${s.title}</h3>
+                <p>${s.sub}</p>
+              </div>
+              <span class="section-count">${filledCount}/${totalCount}</span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body">
+              ${s.render(p)}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+  `;
+
+  // Auto-open Data Dasar by default
+  if (!isEditMode) document.getElementById('section-dasar').classList.add('open');
+}
+
+function showToast(msg) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+function triggerPhotoUpload() {
+  const input = document.getElementById('photoFileInput');
+  if (input) input.click();
+}
+
+async function uploadPhoto(file) {
+  if (!file || !currentUser) return;
+  if (file.size > 5 * 1024 * 1024) { showToast('❌ Ukuran file maksimal 5MB'); return; }
+
+  // Show spinner on avatar
+  const avatar = document.querySelector('.hero-avatar');
+  if (avatar) {
+    const spinner = document.createElement('div');
+    spinner.className = 'upload-spinner';
+    spinner.innerHTML = '⏳';
+    spinner.id = 'avatarSpinner';
+    avatar.appendChild(spinner);
+  }
+
+  const ext = file.name.split('.').pop().toLowerCase() || 'jpg';
+  const path = `${currentUser.id}/avatar.${ext}`;
+
+  // Upload to Supabase Storage (upsert = replace existing)
+  const { error: uploadError } = await sb.storage
+    .from('profile-photos')
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  const spinner = document.getElementById('avatarSpinner');
+  if (spinner) spinner.remove();
+
+  if (uploadError) {
+    showToast('❌ Upload gagal: ' + uploadError.message);
+    return;
+  }
+
+  // Get public URL + cache-bust
+  const { data: urlData } = sb.storage.from('profile-photos').getPublicUrl(path);
+  const cleanUrl = urlData.publicUrl;
+  const bustUrl = cleanUrl + '?t=' + Date.now();
+
+  // Save URL to profile (save without cache-bust)
+  const { error: updateError } = await sb.from('profiles')
+    .update({ photo_url: cleanUrl, updated_at: new Date().toISOString() })
+    .eq('user_id', currentUser.id);
+
+  if (updateError) { showToast('❌ Gagal simpan URL: ' + updateError.message); return; }
+
+  profileData.photo_url = cleanUrl;
+
+  // Update avatar immediately (busted URL for fresh display)
+  if (avatar) {
+    avatar.innerHTML = `<img src="${bustUrl}" alt="Foto profil"><div class="avatar-overlay">📷<span>Ganti Foto</span></div>`;
+  }
+  // Re-attach file input
+  const newInput = document.createElement('input');
+  newInput.type = 'file'; newInput.id = 'photoFileInput';
+  newInput.accept = 'image/jpeg,image/png,image/webp,image/jpg';
+  newInput.style.display = 'none';
+  newInput.onchange = (e) => uploadPhoto(e.target.files[0]);
+  document.querySelector('.hero-card').appendChild(newInput);
+
+  showToast('✅ Foto profil berhasil diupload!');
+}
+
+function toggleSettings() { showToast('⚙️ Pengaturan segera hadir!'); }
+
+document.addEventListener('DOMContentLoaded', initAuth);
+</script>
+</body>
+</html>

@@ -1497,11 +1497,7 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
   <nav class="sidebar">
     <div class="sidebar-logo">ح</div>
     
-    <a href="onboarding.html" class="nav-item " style="text-decoration:none;">
-      🤖
-      
-      <div class="nav-tooltip">Onboarding</div>
-    </a>
+
     <a href="discovery.html" class="nav-item active" style="text-decoration:none;">
       🔍
       
@@ -1517,6 +1513,9 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
       
       <div class="nav-tooltip">Chat Mediator</div>
     </a>
+    <a href="profile.html" class="nav-item " style="text-decoration:none;">
+      👤<div class="nav-tooltip">Profil Saya</div>
+    </a>
     <div style="margin-top:auto;" class="nav-item" onclick="toggleWebhookPanel()">
       ⚙️
       <div class="nav-tooltip">Konfigurasi Integrasi</div>
@@ -1527,36 +1526,25 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
     <div class="topbar">
       <div class="topbar-title" id="pageTitle">Discovery — Temukan Kandidat</div>
       <div class="topbar-actions" id="topbarActions">
-        <div class="n8n-indicator">
-          <div class="n8n-dot"></div>
-          N8N Connected
-        </div>
+
       </div>
     </div>
 
     <div class="page active" id="page-discovery" style="flex:1;overflow:hidden;">
       <div class="discovery-page" style="display:flex;flex-direction:column;width:100%;height:100%;">
       <div class="discovery-toolbar">
-        <button class="filter-chip active" onclick="toggleChip(this)"><span class="dot"></span> Semua</button>
+        <button class="filter-chip active" id="chipSemua" onclick="setFilter('all', this)"><span class="dot"></span> Semua</button>
         <button class="filter-chip" onclick="toggleChip(this)"><span class="dot"></span> Domisili Terdekat</button>
         <button class="filter-chip" onclick="toggleChip(this)"><span class="dot"></span> Target &lt; 6 Bulan</button>
         <button class="filter-chip" onclick="toggleChip(this)"><span class="dot"></span> S1+</button>
+        <button class="filter-chip" id="chipPotensial" onclick="setFilter('liked', this)" style="display:none;"><span class="dot"></span> ❤️ Profil Potensial</button>
         <button class="filter-btn" onclick="showModal('filterModal')">⚙️ Filter Lanjutan</button>
       </div>
       <div class="discovery-grid" id="discoveryGrid"></div>
     </div>
     </div>
 
-    <div class="integration-bar">
-      <div class="integration-badge"><div class="int-dot"></div>Supabase DB</div>
-      <div style="color:var(--cream-dark)">|</div>
-      <div class="integration-badge"><div class="int-dot"></div>N8N Webhook</div>
-      <div style="color:var(--cream-dark)">|</div>
-      <div class="integration-badge"><div class="int-dot"></div>Live Chat Moderation</div>
-      <div style="margin-left:auto;font-size:11px;color:var(--text-muted);">
-        HAIANA v1.0 · <span style="font-family:'Amiri',serif;color:var(--gold);">حيانا</span>
-      </div>
-    </div>
+
   </div>
 </div>
 
@@ -1853,20 +1841,71 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ========================
 // DISCOVERY
 // ========================
-const candidates = [
-  { id: 1, name: 'Akhwat A', age: 25, job: 'Guru SD', domisili: 'Malang', pendidikan: 'S1', target: '< 6 Bulan', emoji: '👩‍🏫', match: 92 },
-  { id: 2, name: 'Akhwat B', age: 27, job: 'Dokter Umum', domisili: 'Surabaya', pendidikan: 'S1', target: '6-12 Bulan', emoji: '👩‍⚕️', match: 85 },
-  { id: 3, name: 'Akhwat C', age: 24, job: 'Software Engineer', domisili: 'Malang', pendidikan: 'S1', target: '< 6 Bulan', emoji: '👩‍💻', match: 88 },
-  { id: 4, name: 'Akhwat D', age: 26, job: 'Marketing Manager', domisili: 'Jakarta', pendidikan: 'S2', target: '< 6 Bulan', emoji: '👩‍💼', match: 79 },
-  { id: 5, name: 'Akhwat E', age: 23, job: 'Desainer Grafis', domisili: 'Yogyakarta', pendidikan: 'S1', target: '6-12 Bulan', emoji: '👩‍🎨', match: 75 },
-  { id: 6, name: 'Akhwat F', age: 28, job: 'Peneliti LIPI', domisili: 'Bandung', pendidikan: 'S2', target: '6-12 Bulan', emoji: '👩‍🔬', match: 82 },
-];
+const state = {
+  interestSent: [],       // profile IDs we've sent interest to (loaded from DB)
+  interestQuota: 5,
+  interestUsed: 0,        // loaded from DB
+  likedIds: JSON.parse(localStorage.getItem('haiana_liked') || '[]'),
+};
 
-let activeFilter = null;
+let allCandidates = [];
+
+function calcAge(dateStr) {
+  if (!dateStr) return '?';
+  const dob = new Date(dateStr);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
+async function loadCandidates() {
+  const grid = document.getElementById('discoveryGrid');
+  grid.innerHTML = '<div class="empty-state"><div class="empty-title" style="margin-top:12px">⏳ Memuat kandidat...</div></div>';
+
+  const myGender = profileData?.gender || '';
+  const targetGender = myGender === 'laki-laki' ? 'perempuan'
+                      : myGender === 'perempuan' ? 'laki-laki' : null;
+
+  let query = sb.from('profiles')
+    .select('id, nickname, fullname, gender, date_of_birth, domicile, occupation, education_status')
+    .eq('completed', true)
+    .or(`user_id.is.null,user_id.neq.${currentUser.id}`);
+
+  if (targetGender) query = query.eq('gender', targetGender);
+
+  const { data, error } = await query;
+
+  if (error) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Gagal memuat data</div><div class="empty-sub">${error.message}</div></div>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🌿</div><div class="empty-title">Belum ada kandidat</div><div class="empty-sub">Belum ada user lain yang menyelesaikan profil. Coba lagi nanti.</div></div>';
+    return;
+  }
+
+  const genderEmoji = { 'perempuan': '👩', 'laki-laki': '👨' };
+  allCandidates = data.map(p => ({
+    id: p.id,
+    name: p.nickname || p.fullname || 'Anonim',
+    age: calcAge(p.date_of_birth),
+    job: p.occupation || '-',
+    domisili: (p.domicile || '-').split(',')[0].trim(),
+    pendidikan: p.education_status || '-',
+    emoji: genderEmoji[p.gender] || '👤',
+    match: Math.floor(72 + Math.random() * 24),
+    gender: p.gender,
+  }));
+
+  renderDiscovery(allCandidates);
+}
 
 function renderDiscovery(filtered) {
   const grid = document.getElementById('discoveryGrid');
-  const list = filtered !== undefined ? filtered : candidates;
+  const list = filtered !== undefined ? filtered : allCandidates;
   grid.innerHTML = '';
 
   if (list.length === 0) {
@@ -1874,7 +1913,7 @@ function renderDiscovery(filtered) {
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
         <div class="empty-title">Belum ada profil yang sesuai</div>
-        <div class="empty-sub">Coba sesuaikan filter Anda untuk menemukan lebih banyak kandidat yang cocok.</div>
+        <div class="empty-sub">Coba sesuaikan filter untuk menemukan lebih banyak kandidat.</div>
         <button class="btn btn-outline" onclick="resetFilters()">Reset Filter</button>
       </div>
     `;
@@ -1902,41 +1941,66 @@ function renderDiscovery(filtered) {
           <span class="cand-tag">${c.age} thn</span>
           <span class="cand-tag highlighted">${c.domisili}</span>
           <span class="cand-tag">${c.pendidikan}</span>
-          <span class="cand-tag highlighted">Target: ${c.target}</span>
+          <span class="cand-tag highlighted">${c.job}</span>
         </div>
         <div style="font-size:12px;color:var(--sage-dark);font-weight:500;">✨ ${c.match}% kompatibilitas</div>
       </div>
       <div class="candidate-actions">
         <button class="interest-btn ${sent ? 'sent' : ''}"
           ${disabled && !sent ? 'disabled' : ''}
-          onclick="sendInterest(${c.id}, this)">
+          onclick="sendInterest('${c.id}', this)">
           ${sent ? '⏳ Menunggu Respon' : '💌 Kirim Interest'}
         </button>
-        <button class="save-btn" onclick="event.stopPropagation(); toggleSave(this)">🤍</button>
+        <button class="save-btn" onclick="event.stopPropagation(); toggleSave(this)">${state.likedIds.includes(c.id) ? '❤️' : '🤍'}</button>
       </div>
     `;
     grid.appendChild(card);
   });
 }
 
-function sendInterest(id, btn) {
+async function sendInterest(candidateId, btn) {
   if (state.interestUsed >= state.interestQuota) {
     showToast('Kuota Interest harianmu habis. Coba lagi besok.', 'warning');
     return;
   }
+  if (state.interestSent.includes(candidateId)) return;
 
-  if (state.interestSent.includes(id)) return;
-
-  state.interestSent.push(id);
-  state.interestUsed++;
-
-  btn.textContent = '⏳ Menunggu Respon';
-  btn.classList.add('sent');
+  // Optimistic UI update
+  btn.innerHTML = '⏳ Mengirim...';
   btn.disabled = true;
 
-  showToast('💌 Interest terkirim! Notifikasi dikirim via N8N ke kandidat.', 'success');
+  // INSERT to Supabase
+  const { error } = await sb.from('interests').insert({
+    sender_user_id: currentUser.id,
+    sender_profile_id: profileData.id || null,
+    receiver_profile_id: candidateId,
+    status: 'pending'
+  });
 
-  // Check quota
+  if (error) {
+    // Duplicate = already sent (unique constraint)
+    if (error.code === '23505') {
+      // Silently mark as sent
+      state.interestSent.push(candidateId);
+      btn.innerHTML = '⏳ Menunggu Respon';
+      btn.classList.add('sent');
+      return;
+    }
+    showToast('❌ Gagal mengirim interest: ' + error.message, 'error');
+    btn.innerHTML = '💌 Kirim Interest';
+    btn.disabled = false;
+    return;
+  }
+
+  state.interestSent.push(candidateId);
+  state.interestUsed++;
+
+  btn.innerHTML = '⏳ Menunggu Respon';
+  btn.classList.add('sent');
+
+  showToast('💌 Interest terkirim! Cek di Inbox → Terkirim', 'success');
+
+  // Disable others if quota reached
   if (state.interestUsed >= state.interestQuota) {
     setTimeout(() => {
       document.querySelectorAll('.interest-btn:not(.sent)').forEach(b => {
@@ -1948,12 +2012,45 @@ function sendInterest(id, btn) {
 }
 
 function toggleSave(btn) {
-  btn.textContent = btn.textContent === '🤍' ? '❤️' : '🤍';
+  const card = btn.closest('.candidate-card');
+  const interestBtn = card.querySelector('.interest-btn');
+  // Get candidate id from interest button onclick attr
+  const match = interestBtn ? interestBtn.getAttribute('onclick').match(/'([^']+)'/) : null;
+  const cid = match ? match[1] : null;
+
+  if (btn.textContent === '🤍') {
+    btn.textContent = '❤️';
+    if (cid && !state.likedIds.includes(cid)) {
+      state.likedIds.push(cid);
+      localStorage.setItem('haiana_liked', JSON.stringify(state.likedIds));
+    }
+  } else {
+    btn.textContent = '🤍';
+    if (cid) {
+      state.likedIds = state.likedIds.filter(x => x !== cid);
+      localStorage.setItem('haiana_liked', JSON.stringify(state.likedIds));
+    }
+  }
+  // Show/hide Profil Potensial chip
+  const chip = document.getElementById('chipPotensial');
+  if (chip) chip.style.display = state.likedIds.length > 0 ? '' : 'none';
+}
+
+function setFilter(type, el) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  if (type === 'liked') {
+    const liked = state.likedIds;
+    renderDiscovery(allCandidates.filter(c => liked.includes(c.id)));
+  } else {
+    renderDiscovery(allCandidates);
+  }
 }
 
 function toggleChip(el) {
   document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
+  renderDiscovery(allCandidates);
 }
 
 function toggleOption(el) {
@@ -1962,33 +2059,37 @@ function toggleOption(el) {
 
 function applyFilters() {
   hideModal('filterModal');
-  const filtered = candidates.filter(c => c.pendidikan === 'S1' || c.pendidikan === 'S2');
+  const selected = [...document.querySelectorAll('.filter-option.selected')].map(o => o.dataset?.value || o.textContent.trim());
+  const filtered = selected.length === 0 ? allCandidates
+    : allCandidates.filter(c => selected.some(s => (c.pendidikan || '').includes(s) || (c.domisili || '').includes(s)));
   renderDiscovery(filtered);
   showToast('✅ Filter diterapkan — ' + filtered.length + ' kandidat ditemukan', 'success');
 }
 
 function resetFilters() {
   document.querySelectorAll('.filter-option').forEach(o => o.classList.remove('selected'));
-  renderDiscovery();
+  renderDiscovery(allCandidates);
   showToast('Filter direset', 'info');
 }
 
 
-function onPageReady() { renderDiscovery(); }
-function toggleChip(el) {
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
+async function loadSentInterests() {
+  // Load sent interests from Supabase to restore button states
+  const { data, error } = await sb.from('interests')
+    .select('receiver_profile_id')
+    .eq('sender_user_id', currentUser.id);
+  if (data) {
+    state.interestSent = data.map(r => r.receiver_profile_id);
+    state.interestUsed = data.length;
+  }
 }
-function toggleOption(el) { el.classList.toggle('selected'); }
-function applyFilters() {
-  hideModal('filterModal');
-  const filtered = candidates.filter(c => c.pendidikan === 'S1' || c.pendidikan === 'S2');
-  renderDiscovery(filtered);
-  showToast('✅ Filter diterapkan — ' + filtered.length + ' kandidat ditemukan', 'success');
-}
-function resetFilters() {
-  document.querySelectorAll('.filter-option').forEach(o => o.classList.remove('selected'));
-  renderDiscovery();
+
+async function onPageReady() {
+  await loadSentInterests();
+  await loadCandidates();
+  // Restore Profil Potensial chip visibility
+  const chip = document.getElementById('chipPotensial');
+  if (chip && state.likedIds.length > 0) chip.style.display = '';
 }
 
 

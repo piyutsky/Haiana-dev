@@ -1497,11 +1497,7 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
   <nav class="sidebar">
     <div class="sidebar-logo">ح</div>
     
-    <a href="onboarding.html" class="nav-item " style="text-decoration:none;">
-      🤖
-      
-      <div class="nav-tooltip">Onboarding</div>
-    </a>
+
     <a href="discovery.html" class="nav-item " style="text-decoration:none;">
       🔍
       
@@ -1517,6 +1513,9 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
       
       <div class="nav-tooltip">Chat Mediator</div>
     </a>
+    <a href="profile.html" class="nav-item " style="text-decoration:none;">
+      👤<div class="nav-tooltip">Profil Saya</div>
+    </a>
     <div style="margin-top:auto;" class="nav-item" onclick="toggleWebhookPanel()">
       ⚙️
       <div class="nav-tooltip">Konfigurasi Integrasi</div>
@@ -1527,10 +1526,7 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
     <div class="topbar">
       <div class="topbar-title" id="pageTitle">Inbox — Interest & Respon</div>
       <div class="topbar-actions" id="topbarActions">
-        <div class="n8n-indicator">
-          <div class="n8n-dot"></div>
-          N8N Connected
-        </div>
+
       </div>
     </div>
 
@@ -1553,16 +1549,7 @@ a.nav-item:hover { color: var(--gold); background: rgba(201,168,76,0.15); }
     </div>
     </div>
 
-    <div class="integration-bar">
-      <div class="integration-badge"><div class="int-dot"></div>Supabase DB</div>
-      <div style="color:var(--cream-dark)">|</div>
-      <div class="integration-badge"><div class="int-dot"></div>N8N Webhook</div>
-      <div style="color:var(--cream-dark)">|</div>
-      <div class="integration-badge"><div class="int-dot"></div>Live Chat Moderation</div>
-      <div style="margin-left:auto;font-size:11px;color:var(--text-muted);">
-        HAIANA v1.0 · <span style="font-family:'Amiri',serif;color:var(--gold);">حيانا</span>
-      </div>
-    </div>
+
   </div>
 </div>
 
@@ -1726,7 +1713,15 @@ function showToast(msg, type = 'success') {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ========================
-// INBOX
+// STATE
+// ========================
+const state = {
+  inboxTab: 'incoming',
+  activeInboxItem: null,
+};
+
+// ========================
+// INBOX DATA
 // ========================
 const inboxData = {
   incoming: [
@@ -1734,13 +1729,64 @@ const inboxData = {
     { id: 2, name: 'Ikhwan B', preview: 'Mengirimkan Interest...', time: 'Kemarin', status: 'waiting', emoji: '👨‍🔬' },
     { id: 3, name: 'Ikhwan C', preview: 'Mengirimkan Interest...', time: 'Sen', status: 'waiting', emoji: '👨‍🏫' },
   ],
-  sent: [
-    { id: 4, name: 'Akhwat A', preview: 'Interest terkirim', time: '09:00', status: 'waiting', emoji: '👩‍🏫' },
-  ],
+  sent: [],
   matched: [
     { id: 5, name: 'Ahmad Faris', preview: 'Tahap Tukar CV', time: '14:32', status: 'cv', emoji: '👨‍💼' },
   ]
 };
+
+async function loadSentFromSupabase() {
+  // Step 1: get all interests sent by this user
+  const { data: interests, error: iErr } = await sb
+    .from('interests')
+    .select('id, status, created_at, receiver_profile_id')
+    .eq('sender_user_id', currentUser.id)
+    .order('created_at', { ascending: false });
+
+  if (iErr) {
+    console.error('loadSentFromSupabase error:', iErr.message);
+    inboxData.sent = [];
+    return;
+  }
+
+  if (!interests || interests.length === 0) {
+    inboxData.sent = [];
+    return;
+  }
+
+  // Step 2: batch-fetch receiver profiles
+  const receiverIds = interests.map(r => r.receiver_profile_id);
+  const { data: profiles } = await sb
+    .from('profiles')
+    .select('id, nickname, fullname, gender, occupation, domicile')
+    .in('id', receiverIds);
+
+  // Build a lookup map
+  const profileMap = {};
+  (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+  const genderEmoji = { 'perempuan': '👩', 'laki-laki': '👨' };
+  const statusMap = { pending: 'waiting', accepted: 'cv', rejected: 'rejected' };
+
+  inboxData.sent = interests.map(row => {
+    const p = profileMap[row.receiver_profile_id] || {};
+    const name = p.nickname || p.fullname || 'Kandidat';
+    const emoji = genderEmoji[p.gender] || '👤';
+    const d = new Date(row.created_at);
+    const time = d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return {
+      id: row.id,
+      profileId: p.id,
+      name,
+      emoji,
+      preview: 'Interest terkirim',
+      time,
+      status: statusMap[row.status] || 'waiting',
+      occupation: p.occupation || '-',
+      domicile: p.domicile ? p.domicile.split(',')[0].trim() : '-',
+    };
+  });
+}
 
 function renderInbox() {
   const list = document.getElementById('inboxList');
@@ -1766,13 +1812,31 @@ function renderInbox() {
     `;
     list.appendChild(div);
   });
+
+  if (items.length === 0) {
+    list.innerHTML = `
+      <div style="padding:32px 16px;text-align:center;color:var(--text-muted);font-size:13px;line-height:1.8;">
+        <div style="font-size:32px;margin-bottom:8px;">📭</div>
+        ${state.inboxTab === 'sent' ? 'Belum ada interest yang dikirim.' : 'Tidak ada pesan.'}
+      </div>`;
+  }
 }
 
-function switchInboxTab(el, tab) {
+async function switchInboxTab(el, tab) {
   document.querySelectorAll('.inbox-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   state.inboxTab = tab;
   state.activeInboxItem = null;
+
+  // Show loading while fetching sent interests
+  if (tab === 'sent') {
+    document.getElementById('inboxList').innerHTML = `
+      <div style="padding:32px 16px;text-align:center;color:var(--text-muted);font-size:13px;">
+        ⏳ Memuat...
+      </div>`;
+    await loadSentFromSupabase();
+  }
+
   renderInbox();
   document.getElementById('inboxDetail').innerHTML = `
     <div class="unread-state">
@@ -1851,6 +1915,25 @@ function selectInboxItem(item) {
         </div>
       </div>
     `;
+  } else if (state.inboxTab === 'sent') {
+    detail.className = 'inbox-detail';
+    detail.innerHTML = `
+      <div class="request-card">
+        <div class="request-avatar">${item.emoji}</div>
+        <div class="request-name">${item.name}</div>
+        <div class="request-info" style="text-align:center;line-height:1.8;">
+          ${item.occupation !== '-' ? `💼 ${item.occupation}` : ''}
+          ${item.domicile !== '-' ? `&nbsp;·&nbsp;📍 ${item.domicile}` : ''}
+        </div>
+        <div class="request-info" style="text-align:center;margin-top:12px;">
+          <span class="inbox-status-badge status-waiting">⏳ Menunggu Respon</span>
+        </div>
+        <div style="margin-top:20px;padding:14px;background:var(--cream);border-radius:12px;font-size:13px;color:var(--text-muted);text-align:center;line-height:1.6;">
+          💬 Admin akan menghubungi Anda jika kandidat merespons Interest ini.<br>
+          <span style="font-size:11px;opacity:0.7;">Dikirim: ${item.time}</span>
+        </div>
+      </div>
+    `;
   }
 }
 
@@ -1896,7 +1979,10 @@ function confirmAccept() {
 }
 
 
-function onPageReady() { renderInbox(); }
+async function onPageReady() {
+  await loadSentFromSupabase();
+  renderInbox();
+}
 function goToChatWithPerson(name) { window.location.href = 'chat.html'; }
 
 
